@@ -1,0 +1,2864 @@
+---
+page_title: "Mailgun: mailgun_domain"
+---
+
+# mailgun\_api\_key
+
+Provides a Mailgun API key resource. This can be used to  create and manage API keys on Mailgun.
+
+~> **Note:** Please note that due to the limitations of the Terraform SDK v2 this provider uses, the removal of API keys
+which have their expiration set cannot be handled properly after expiration. In order to remove such expired keys, it is
+recommended to use `terraform state rm`.
+
+## Example Usage
+
+```hcl
+# Create a new Mailgun API key
+resource "mailgun_api_key" "some_key" {
+  role = "basic"
+  kind = "user"
+  description = "Some key"
+}
+```
+
+## Argument Reference
+
+The following arguments are supported:
+
+* `role` - (Required) (Enum: `admin`, `basic`, `sending`, `support`, or `developer`) Key role.
+* `description` - (Optional) Key description.
+* `kind` - (Optional) (Enum:`domain`, `user`, or `web`). API key type. Default: `user`.
+* `expiration` - (Optional) Key lifetime in seconds, must be greater than 0 if set.
+* `email` - (Optional) API key user's email address; should be provided for all keys of `web` kind.
+* `domain_name` - (Optional) Web domain to associate with the key, for keys of `domain` kind.
+* `user_id` - (Optional) API key user's string user ID; should be provided for all keys of `web` kind.
+* `user_name` - (Optional) API key user's name.
+
+## Attributes Reference
+
+The following attributes are exported:
+
+* `id` - The key ID.
+* `description` - Key description.
+* `kind` - The type of the key which determines how it can be used.
+* `role` - The role of the key which determines its scope in CRUD operations that have role-based access control.
+* `domain_name` - The sending domain associated with the key.
+* `email` - API key user's email address.
+* `requestor` - An email address associated with the key.
+* `disabled_reason` - The reason for the key's disablement.
+* `expires_at` - When the key will expire.
+* `is_disabled` - Whether or not the key is disabled from use.
+* `secret` - The full API key secret in plain text.
+* `user_id` - API key user's string user ID.
+* `user_name` - The API key user's name.
+---
+page_title: "Mailgun: mailgun_domain"
+---
+
+# mailgun\_domain_credential
+
+Provides a Mailgun domain credential resource. This can be used to create and manage credential in domain of Mailgun.
+
+~> **Note:** Please note that starting of v0.6.1 due to using new Mailgun Client API (v4), there is no possibility to retrieve previously created secrets via API. In order get it worked, it's recommended to mark `password` as ignored under `lifecycle` block. See below.
+
+## Example Usage
+
+```hcl
+# Create a new Mailgun credential
+resource "mailgun_domain_credential" "foobar" {
+	domain = "toto.com"
+	login = "test"
+	password = "supersecretpassword1234"
+	region = "us"
+	
+	lifecycle {
+	    ignore_changes = [ "password" ]
+	}
+}
+```
+
+## Argument Reference
+
+The following arguments are supported:
+
+* `domain` - (Required) The domain to add credential of Mailgun.
+* `login` - (Required) The local-part of the email address to create.
+* `password` - (Required) Password for user authentication.
+* `region` - (Optional) The region where domain credential will be created. Default value is `us`.
+
+## Attributes Reference
+
+The following attributes are exported:
+
+* `domain` - The name of the domain.
+* `email` - The email address.
+* `password` - Password for user authentication.
+* `region` - The name of the region.
+
+## Import
+
+Domain credential can be imported using `region:email` via `import` command. Region has to be chosen from `eu` or `us` (when no selection `us` is applied). 
+Password is always exported to `null`.
+
+```hcl
+terraform import mailgun_domain_credential.test us:test@domain.com
+```
+---
+page_title: "Mailgun: mailgun_webhook"
+---
+
+# mailgun\_webhook
+
+Provides a Mailgun App resource. This can be used to
+create and manage applications on Mailgun.
+
+## Example Usage
+
+```hcl
+# Create a new Mailgun webhook
+resource "mailgun_webhook" "default" {
+  domain        = "test.example.com"
+  region        = "us"
+  kind          = "delivered"
+  urls          = ["https://example.com"]
+}
+```
+
+## Argument Reference
+
+The following arguments are supported:
+
+* `domain` - (Required) The domain to add to Mailgun
+* `region` - (Optional) The region where webhook will be created. Default value is `us`.
+* `kind` - (Required) The kind of webhook. Supported values (`accepted` `clicked` `complained` `delivered` `opened` `permanent_fail`, `temporary_fail` `unsubscribed`)
+* `urls` - (Required) The urls of webhook
+
+## Attributes Reference
+
+The following attributes are exported:
+
+* `domain` - The name of the domain.
+* `region` - The name of the region.
+* `kind` - The kind of the webhook.
+* `urls` - The urls of the webhook.
+---
+page_title: "Mailgun: mailgun_domain"
+---
+
+# mailgun\_domain
+
+Provides a Mailgun App resource. This can be used to
+create and manage applications on Mailgun.
+
+After DNS records are set, domain verification should be triggered manually using [PUT /domains/\<domain\>/verify](https://documentation.mailgun.com/en/latest/api-domains.html#domains)
+
+## Example Usage
+
+```hcl
+# Create a new Mailgun domain
+resource "mailgun_domain" "default" {
+  name          = "test.example.com"
+  region        = "us"
+  spam_action   = "disabled"
+  smtp_password   = "supersecretpassword1234"
+  dkim_key_size   = 1024
+}
+```
+
+Here’s an example using the [Cloudflare provider](https://registry.terraform.io/providers/cloudflare/cloudflare/latest). Bear in mind that the solution below requires the Cloudflare provider to be included in your project. Also, the Mailgun provider isn’t associated with Cloudflare, and other Terraform providers that can control DNS may require a slightly different implementation.
+
+```hcl
+# Use receiving/sending set attributes to create DNS entries
+resource "cloudflare_record" "default_receiving" {
+  for_each = {
+    for record in mailgun_domain.default.receiving_records_set : record.id => {
+      type     = record.record_type
+      value    = record.value
+      priority = record.priority
+    }
+  }
+
+  zone_id  = var.zone_id
+  name     = var.domain
+
+  type     = each.value.type
+  value    = each.value.value
+  priority = each.value.priority
+}
+
+resource "cloudflare_record" "default_sending" {
+  for_each = {
+    for record in mailgun_domain.default.sending_records_set : record.id => {
+      name  = record.name
+      type  = record.record_type
+      value = record.value
+    }
+  }
+
+  zone_id = var.zone_id
+
+  name    = each.value.name
+  type    = each.value.type
+  value   = each.value.value
+}
+```
+
+## Argument Reference
+
+The following arguments are supported:
+
+* `name` - (Required) The domain to add to Mailgun
+* `region` - (Optional) The region where domain will be created. Default value is `us`.
+* `smtp_password` - (Optional) Password for SMTP authentication
+* `spam_action` - (Optional) `disabled` or `tag` Disable, no spam
+    filtering will occur for inbound messages. Tag, messages
+    will be tagged with a spam header. Default value is `disabled`.
+* `wildcard` - (Optional) Boolean that determines whether
+    the domain will accept email for sub-domains.
+* `dkim_key_size` - (Optional) The length of your domain’s generated DKIM key. Default value is `1024`.
+* `dkim_selector` - (Optional) The name of your DKIM selector if you want to specify it whereas MailGun will make it's own choice.
+* `force_dkim_authority` - (Optional) If set to true, the domain will be the DKIM authority for itself even if the root domain is registered on the same mailgun account. If set to false, the domain will have the same DKIM authority as the root domain registered on the same mailgun account. The default is `false`.
+* `open_tracking` - (Optional) (Enum: `yes` or `no`) The open tracking settings for the domain. Default: `no`
+* `click_tracking` - (Optional) (Enum: `yes` or `no`) The click tracking settings for the domain. Default: `no`
+* `web_scheme` - (Optional) (`http` or `https`) The tracking web scheme. Default: `http`
+
+## Attributes Reference
+
+The following attributes are exported:
+
+* `name` - The name of the domain.
+* `region` - The name of the region.
+* `smtp_login` - The login email for the SMTP server.
+* `smtp_password` - The password to the SMTP server.
+* `wildcard` - Whether or not the domain will accept email for sub-domains.
+* `spam_action` - The spam filtering setting.
+* `open_tracking` - The open tracking setting.
+* `click_tracking` - The click tracking setting.
+* `web_scheme` - The tracking web scheme.
+* `receiving_records` - A list of DNS records for receiving validation.  **Deprecated** Use `receiving_records_set` instead.
+  * `priority` - The priority of the record.
+  * `record_type` - The record type.
+  * `valid` - `"valid"` if the record is valid.
+  * `value` - The value of the record.
+* `receiving_records_set` - A set of DNS records for receiving validation.
+  * `priority` - The priority of the record.
+  * `record_type` - The record type.
+  * `valid` - `"valid"` if the record is valid.
+  * `value` - The value of the record.
+* `sending_records` - A list of DNS records for sending validation. **Deprecated** Use `sending_records_set` instead.
+  * `name` - The name of the record.
+  * `record_type` - The record type.
+  * `valid` - `"valid"` if the record is valid.
+  * `value` - The value of the record.
+* `sending_records_set` - A set of DNS records for sending validation.
+  * `name` - The name of the record.
+  * `record_type` - The record type.
+  * `valid` - `"valid"` if the record is valid.
+  * `value` - The value of the record.
+
+## Import
+
+Domains can be imported using `region:domain_name` via `import` command. Region has to be chosen from `eu` or `us` (when no selection `us` is applied).
+
+```hcl
+terraform import mailgun_domain.test us:example.domain.com
+```
+---
+page_title: "Mailgun: mailgun_route"
+---
+
+# mailgun\_route
+
+Provides a Mailgun Route resource. This can be used to create and manage routes on Mailgun.
+
+## Example Usage
+
+```hcl
+# Create a new Mailgun route
+resource "mailgun_route" "default" {
+    priority = "0"
+    description = "inbound"
+    expression = "match_recipient('.*@foo.example.com')"
+    actions = [
+        "forward('http://example.com/api/v1/foos/')",
+        "stop()"
+    ]
+}
+```
+
+## Argument Reference
+
+The following arguments are supported:
+* `priority` - (Required) Smaller number indicates higher priority. Higher priority routes are handled first.
+* `description` - (Required)
+* `expression` - (Required) A filter expression like `match_recipient('.*@gmail.com')`
+* `action` - (Required) Route action. This action is executed when the expression evaluates to True. Example: `forward("alice@example.com")` You can pass multiple `action` parameters.
+* `region` - (Optional) The region where route will be created. Default value is `us`.
+
+## Import
+
+Routes can be imported using `ROUTE_ID` and `region` via `import` command. Route ID can be found on Mailgun portal in section `Receiving/Routes`. Region has to be chosen from `eu` or `us` (when no selection `us` is applied). 
+
+```hcl
+terraform import mailgun_route.test eu:123456789
+```---
+page_title: "Provider: Mailgun"
+---
+
+# Mailgun Provider
+
+The Mailgun provider is used to interact with the
+resources supported by Mailgun. The provider needs to be configured
+with the proper credentials before it can be used.
+
+Use the navigation to the left to read about the available resources.
+
+## Example Usage
+
+```hcl
+# Configure the Mailgun provider
+provider "mailgun" {
+  api_key = "${var.mailgun_api_key}"
+}
+
+# Create a new domain
+resource "mailgun_domain" "default" {
+  # ...
+}
+```
+
+## Argument Reference
+
+The following arguments are supported:
+
+* `api_key` - (Required) Mailgun API key
+
+---
+page_title: "Mailgun: mailgun_domain"
+---
+
+# mailgun\_domain
+
+`mailgun_domain` provides details about a Mailgun domain.
+
+## Example Usage
+
+```hcl
+data "mailgun_domain" "domain" {
+  name = "test.example.com"
+}
+
+resource "aws_route53_record" "mailgun-mx" {
+  zone_id = "${var.zone_id}"
+  name    = "${data.mailgun.domain.name}"
+  type    = "MX"
+  ttl     = 3600
+  records = [
+    "${data.mailgun_domain.domain.receiving_records.0.priority} ${data.mailgun_domain.domain.receiving_records.0.value}.",
+    "${data.mailgun_domain.domain.receiving_records.1.priority} ${data.mailgun_domain.domain.receiving_records.1.value}.",
+  ]
+}
+```
+
+## Argument Reference
+
+* `name` - (Required) The name of the domain.
+* `region` - (Optional) The region where domain will be created. Default value is `us`.
+
+## Attributes Reference
+
+The following attributes are exported:
+
+* `name` - The name of the domain.
+* `smtp_login` - The login email for the SMTP server.
+* `smtp_password` - The password to the SMTP server.
+* `wildcard` - Whether or not the domain will accept email for sub-domains.
+* `spam_action` - The spam filtering setting.
+* `open_tracking` - The open tracking setting.
+* `click_tracking` - The click tracking setting.
+* `web_scheme` - The tracking web scheme.
+* `receiving_records` - A list of DNS records for receiving validation.
+    * `priority` - The priority of the record.
+    * `record_type` - The record type.
+    * `valid` - `"valid"` if the record is valid.
+    * `value` - The value of the record.
+* `sending_records` - A list of DNS records for sending validation.
+    * `name` - The name of the record.
+    * `record_type` - The record type.
+    * `valid` - `"valid"` if the record is valid.
+    * `value` - The value of the record.Terraform Provider
+==================
+
+- Website: https://registry.terraform.io/providers/wgebis/mailgun/
+- [![Gitter chat](https://badges.gitter.im/hashicorp-terraform/Lobby.png)](https://gitter.im/hashicorp-terraform/Lobby)
+- Mailing list: [Google Groups](http://groups.google.com/group/terraform-tool)
+
+Requirements
+------------
+
+-	[Terraform](https://www.terraform.io/downloads.html) 0.13.x
+-	[Go](https://golang.org/doc/install) 1.24.1 (to build the provider plugin)
+
+Building The Provider
+---------------------
+
+Clone repository to: `$GOPATH/src/github.com/wgebis/terraform-provider-mailgun`
+
+```sh
+$ mkdir -p $GOPATH/src/github.com/wgebis; cd $GOPATH/src/github.com/wgebis
+$ git clone git@github.com:wgebis/terraform-provider-mailgun
+```
+
+Enter the provider directory and build the provider
+
+```sh
+$ cd $GOPATH/src/github.com/wgebis/terraform-provider-mailgun
+$ make build
+```
+
+Using the provider
+----------------------
+
+https://registry.terraform.io/providers/wgebis/mailgun/latest/docs
+
+Developing the Provider
+----------------------
+
+If you wish to work on the provider, you'll first need [Go](http://www.golang.org) installed on your machine (version 1.8+ is *required*). You'll also need to correctly setup a [GOPATH](http://golang.org/doc/code.html#GOPATH), as well as adding `$GOPATH/bin` to your `$PATH`.
+
+To compile the provider, run `make build`. This will build the provider and put the provider binary in the `$GOPATH/bin` directory.
+
+```sh
+$ make build
+...
+$ $GOPATH/bin/terraform-provider-mailgun
+...
+```
+
+In order to test the provider, you can simply run `make test`.
+
+```sh
+$ make test
+```
+
+In order to run the full suite of Acceptance tests, run `make testacc`.
+
+*Note:* Acceptance tests create real resources, and often cost money to run.
+
+```sh
+$ make testacc
+```
+# Visit https://goreleaser.com for documentation on how to customize this
+# behavior.
+version: 2
+before:
+  hooks:
+    # this is just an example and not a requirement for provider building/publishing
+    - go mod tidy
+builds:
+  - env:
+      # goreleaser does not work with CGO, it could also complicate
+      # usage by users in CI/CD systems like Terraform Cloud where
+      # they are unable to install libraries.
+      - CGO_ENABLED=0
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    flags:
+      - -trimpath
+    ldflags:
+      - '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}}'
+    goos:
+      - freebsd
+      - windows
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - '386'
+      - arm
+      - arm64
+    ignore:
+      - goos: darwin
+        goarch: '386'
+    binary: '{{ .ProjectName }}_v{{ .Version }}'
+archives:
+  - format: zip
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+checksum:
+  name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
+  algorithm: sha256
+signs:
+  - artifacts: checksum
+    args:
+      # if you are using this is a GitHub action or some other automated pipeline, you
+      # need to pass the batch flag to indicate its not interactive.
+      - "--batch"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}" # set this environment variable for your signing key
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
+# release:
+# # If you want to manually examine the release before its live, uncomment this line:
+# # draft: true
+# changelog:
+#   skip: true# These are supported funding model platforms
+
+github: # Replace with up to 4 GitHub Sponsors-enabled usernames e.g., [user1, user2]
+patreon: # Replace with a single Patreon username
+open_collective: # Replace with a single Open Collective username
+ko_fi: L4L82TD3I
+tidelift: # Replace with a single Tidelift platform-name/package-name e.g., npm/babel
+community_bridge: # Replace with a single Community Bridge project-name e.g., cloud-foundry
+liberapay: # Replace with a single Liberapay username
+issuehunt: # Replace with a single IssueHunt username
+otechie: # Replace with a single Otechie username
+custom: # Replace with up to 4 custom sponsorship URLs e.g., ['link1', 'link2']
+# Code of Conduct
+
+HashiCorp Community Guidelines apply to you when interacting with the community here on GitHub and contributing code.
+
+Please read the full text at https://www.hashicorp.com/community-guidelines
+# This GitHub action can publish assets for release when a tag is created.
+# Currently its setup to run on any tag that matches the pattern "v*" (ie. v0.1.0).
+#
+# This uses an action (paultyng/ghaction-import-gpg) that assumes you set your
+# private key in the `GPG_PRIVATE_KEY` secret and passphrase in the `PASSPHRASE`
+# secret. If you would rather own your own GPG handling, please fork this action
+# or use an alternative one for key handling.
+#
+# You will need to pass the `--batch` flag to `gpg` in your signing step
+# in `goreleaser` to indicate this is being used in a non-interactive mode.
+#
+name: release
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v2
+      -
+        name: Unshallow
+        run: git fetch --prune --unshallow
+      -
+        name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.24.1
+      -
+        name: Import GPG key
+        id: import_gpg
+        uses: paultyng/ghaction-import-gpg@v2.1.0
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          PASSPHRASE: ${{ secrets.PASSPHRASE }}
+      -
+        name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v2
+        with:
+          args: release --clean
+        env:
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+# Support
+
+Terraform is a mature project with a growing community. There are active, dedicated people willing to help you through various mediums.
+
+Take a look at those mediums listed at https://www.terraform.io/community.html
+Hi there,
+
+Thank you for opening an issue. Please note that we try to keep the Terraform issue tracker reserved for bug reports and feature requests. For general usage questions, please see: https://www.terraform.io/community.html.
+
+### Terraform Version
+Run `terraform -v` to show the version. If you are not running the latest version of Terraform, please upgrade because your issue may have already been fixed.
+
+### Affected Resource(s)
+Please list the resources as a list, for example:
+- opc_instance
+- opc_storage_volume
+
+If this issue appears to affect multiple resources, it may be an issue with Terraform's core, so please mention this.
+
+### Terraform Configuration Files
+```hcl
+# Copy-paste your Terraform configurations here - for large Terraform configs,
+# please use a service like Dropbox and share a link to the ZIP file. For
+# security, you can also encrypt the files using our GPG public key.
+```
+
+### Debug Output
+Please provider a link to a GitHub Gist containing the complete debug output: https://www.terraform.io/docs/internals/debugging.html. Please do NOT paste the debug output in the issue; just paste a link to the Gist.
+
+### Panic Output
+If Terraform produced a panic, please provide a link to a GitHub Gist containing the output of the `crash.log`.
+
+### Expected Behavior
+What should have happened?
+
+### Actual Behavior
+What actually happened?
+
+### Steps to Reproduce
+Please list the steps required to reproduce the issue, for example:
+1. `terraform apply`
+
+### Important Factoids
+Are there anything atypical about your accounts that we should know? For example: Running in EC2 Classic? Custom version of OpenStack? Tight ACLs?
+
+### References
+Are there any other GitHub issues (open or closed) or Pull Requests that should be linked here? For example:
+- GH-1234
+package mailgun
+
+import (
+	"context"
+	"log"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+)
+
+// Provider returns a terraform.ResourceProvider.
+func Provider() *schema.Provider {
+	p := &schema.Provider{
+		Schema: map[string]*schema.Schema{
+			"api_key": {
+				Type:        schema.TypeString,
+				Required:    true,
+				DefaultFunc: schema.EnvDefaultFunc("MAILGUN_API_KEY", nil),
+			},
+		},
+
+		DataSourcesMap: map[string]*schema.Resource{
+			"mailgun_domain": dataSourceMailgunDomain(),
+		},
+
+		ResourcesMap: map[string]*schema.Resource{
+			"mailgun_api_key":           resourceMailgunApiKey(),
+			"mailgun_domain":            resourceMailgunDomain(),
+			"mailgun_route":             resourceMailgunRoute(),
+			"mailgun_domain_credential": resourceMailgunCredential(),
+			"mailgun_webhook":           resourceMailgunWebhook(),
+		},
+	}
+
+	p.ConfigureContextFunc = func(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
+		return providerConfigure(d)
+	}
+
+	return p
+}
+
+func providerConfigure(d *schema.ResourceData) (interface{}, diag.Diagnostics) {
+	config := Config{
+		APIKey: d.Get("api_key").(string),
+	}
+
+	log.Println("[INFO] Initializing Mailgun client")
+	return config.Client()
+}
+package mailgun
+
+import (
+	"log"
+	"strings"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/mailgun/mailgun-go/v5"
+)
+
+// Config struct holds API key
+type Config struct {
+	APIKey        string
+	Region        string
+	MailgunClient *mailgun.Client
+}
+
+// Client returns a new client for accessing mailgun.
+func (c *Config) Client() (*Config, diag.Diagnostics) {
+
+	log.Printf("[INFO] Mailgun Client configured ")
+
+	return c, nil
+}
+
+// GetClient returns a client based on region.
+func (c *Config) GetClient(Region string) (*mailgun.Client, error) {
+
+	c.MailgunClient = mailgun.NewMailgun(c.APIKey)
+	c.Region = Region
+	c.ConfigureBaseUrl(Region)
+
+	return c.MailgunClient, nil
+}
+
+func (c *Config) ConfigureBaseUrl(Region string) {
+	if strings.ToLower(Region) == "eu" {
+		_ = c.MailgunClient.SetAPIBase(mailgun.APIBaseEU)
+	} else {
+		_ = c.MailgunClient.SetAPIBase(mailgun.APIBase)
+	}
+}
+package mailgun
+
+import (
+	"os"
+	"testing"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+)
+
+var testAccProvider *schema.Provider
+
+func newProvider() map[string]func() (*schema.Provider, error) {
+	testAccProvider = Provider()
+	return map[string]func() (*schema.Provider, error){
+		"mailgun": func() (*schema.Provider, error) {
+			return testAccProvider, nil
+		},
+	}
+}
+
+func TestProvider(t *testing.T) {
+	if err := Provider().InternalValidate(); err != nil {
+		t.Fatalf("err: %s", err)
+	}
+}
+
+func TestProvider_impl(t *testing.T) {
+	var _ *schema.Provider = Provider()
+}
+
+func testAccPreCheck(t *testing.T) {
+	if v := os.Getenv("MAILGUN_API_KEY"); v == "" {
+		t.Fatal("MAILGUN_API_KEY must be set for acceptance tests")
+	}
+}
+package mailgun
+
+import (
+	"context"
+	"fmt"
+	"regexp"
+	"testing"
+
+	"github.com/hashicorp/go-uuid"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/mailgun/mailgun-go/v5/mtypes"
+)
+
+func TestAccMailgunDomain_Basic(t *testing.T) {
+	var resp mtypes.GetDomainResponse
+	uuid, _ := uuid.GenerateUUID()
+	domain := fmt.Sprintf("terraform.%s.com", uuid)
+	re := regexp.MustCompile(`^\w+\._domainkey\.` + regexp.QuoteMeta(domain))
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: newProvider(),
+		CheckDestroy:      testAccCheckMailgunDomainDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccCheckMailgunDomainConfig(domain),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckMailgunDomainExists("mailgun_domain.foobar", &resp),
+					testAccCheckMailgunDomainAttributes(domain, &resp),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain.foobar", "name", domain),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain.foobar", "spam_action", "disabled"),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain.foobar", "wildcard", "true"),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain.foobar", "force_dkim_authority", "true"),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain.foobar", "open_tracking", "true"),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain.foobar", "click_tracking", "true"),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain.foobar", "receiving_records.0.priority", "10"),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain.foobar", "web_scheme", "https"),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain.foobar", "receiving_records.0.priority", "10"),
+					resource.TestMatchResourceAttr(
+						"mailgun_domain.foobar", "sending_records.0.name", re),
+					resource.TestMatchResourceAttr(
+						"mailgun_domain.foobar", "sending_records_set.0.name", re),
+				),
+			},
+		},
+	})
+}
+
+func TestAccMailgunDomain_Import(t *testing.T) {
+	resourceName := "mailgun_domain.foobar"
+	uuid, _ := uuid.GenerateUUID()
+	domain := fmt.Sprintf("terraform.%s.com", uuid)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: newProvider(),
+		CheckDestroy:      testAccCheckMailgunDomainDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccCheckMailgunDomainConfig(domain),
+			},
+
+			{
+				ResourceName:            resourceName,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"dkim_key_size", "force_dkim_authority"},
+			},
+		},
+	})
+}
+
+func testAccCheckMailgunDomainDestroy(s *terraform.State) error {
+
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "mailgun_domain" {
+			continue
+		}
+
+		client, errc := testAccProvider.Meta().(*Config).GetClient(rs.Primary.Attributes["region"])
+		if errc != nil {
+			return errc
+		}
+
+		resp, err := client.GetDomain(context.Background(), rs.Primary.ID, nil)
+
+		if err == nil {
+			return fmt.Errorf("Domain still exists: %#v", resp)
+		}
+	}
+
+	return nil
+}
+
+func testAccCheckMailgunDomainAttributes(domain string, DomainResp *mtypes.GetDomainResponse) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+
+		if DomainResp.Domain.Name != domain {
+			return fmt.Errorf("Bad name: %s", DomainResp.Domain.Name)
+		}
+
+		if DomainResp.Domain.SpamAction != "disabled" {
+			return fmt.Errorf("Bad spam_action: %s", DomainResp.Domain.SpamAction)
+		}
+
+		if DomainResp.Domain.Wildcard != true {
+			return fmt.Errorf("Bad wildcard: %t", DomainResp.Domain.Wildcard)
+		}
+
+		if DomainResp.Domain.WebScheme != "https" {
+			return fmt.Errorf("Bad web scheme: %s", DomainResp.Domain.WebScheme)
+		}
+
+		if DomainResp.ReceivingDNSRecords[0].Priority == "" {
+			return fmt.Errorf("Bad receiving_records: %#v", DomainResp.ReceivingDNSRecords[0].Priority)
+		}
+
+		if DomainResp.SendingDNSRecords[0].Name == "" {
+			return fmt.Errorf("Bad sending_records: %#v", DomainResp.SendingDNSRecords)
+		}
+
+		return nil
+	}
+}
+
+func testAccCheckMailgunDomainExists(n string, DomainResp *mtypes.GetDomainResponse) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[n]
+
+		if !ok {
+			return fmt.Errorf("Not found: %s", n)
+		}
+
+		if rs.Primary.ID == "" {
+			return fmt.Errorf("No Domain ID is set")
+		}
+
+		client, errc := testAccProvider.Meta().(*Config).GetClient(rs.Primary.Attributes["region"])
+		if errc != nil {
+			return errc
+		}
+
+		resp, err := client.GetDomain(context.Background(), rs.Primary.ID, nil)
+
+		if err != nil {
+			return err
+		}
+
+		if resp.Domain.Name != rs.Primary.ID {
+			return fmt.Errorf("Domain not found")
+		}
+
+		*DomainResp = resp
+
+		return nil
+	}
+}
+
+func testAccCheckMailgunDomainConfig(domain string) string {
+	return `
+resource "mailgun_domain" "foobar" {
+    name = "` + domain + `"
+	spam_action = "disabled"
+	region = "us"
+    wildcard = true
+	force_dkim_authority = true
+	open_tracking = true
+	click_tracking = true
+	web_scheme = "https"
+}`
+}
+package mailgun
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/mailgun/mailgun-go/v5"
+	"github.com/mailgun/mailgun-go/v5/mtypes"
+)
+
+func resourceMailgunApiKey() *schema.Resource {
+	return &schema.Resource{
+		CreateContext: resourceMailgunApiKeyCreate,
+		DeleteContext: resourceMailgunApiKeyDelete,
+		ReadContext:   resourceMailgunApiKeyRead,
+		Schema: map[string]*schema.Schema{
+			"id": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+			"description": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+			},
+			"kind": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+				Default:  "user",
+			},
+			"role": {
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+			},
+			"domain_name": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+			},
+			"email": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+			},
+			"requestor": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+			"user_id": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+			},
+			"user_name": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+			},
+			"expires_at": {
+				Type:     schema.TypeInt,
+				Optional: true,
+				ForceNew: true,
+			},
+			"secret": {
+				Type:      schema.TypeString,
+				Computed:  true,
+				Sensitive: true,
+			},
+			"is_disabled": {
+				Type:     schema.TypeBool,
+				Computed: true,
+			},
+			"disabled_reason": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+		},
+	}
+}
+
+func resourceMailgunApiKeyCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client, errc := meta.(*Config).GetClient("us")
+	if errc != nil {
+		return diag.FromErr(errc)
+	}
+
+	opts := mailgun.CreateAPIKeyOptions{}
+
+	role := d.Get("role").(string)
+
+	opts.Description = d.Get("description").(string)
+	opts.DomainName = d.Get("domain_name").(string)
+	opts.Email = d.Get("email").(string)
+	opts.Expiration = uint64(d.Get("expires_at").(int))
+	opts.Kind = d.Get("kind").(string)
+	opts.UserID = d.Get("user_id").(string)
+	opts.UserName = d.Get("user_name").(string)
+
+	apiKey, err := client.CreateAPIKey(ctx, role, &opts)
+
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	d.SetId(apiKey.ID)
+	d.Set("requestor", apiKey.Requestor)
+	d.Set("secret", apiKey.Secret)
+
+	log.Printf("[INFO] API key ID: %s", d.Id())
+
+	if err != nil {
+		return diag.FromErr(errc)
+	}
+
+	return nil
+}
+
+func resourceMailgunApiKeyDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client, errc := meta.(*Config).GetClient("us")
+	if errc != nil {
+		return diag.FromErr(errc)
+	}
+
+	log.Printf("[INFO] Deleting API key: %s", d.Id())
+
+	// Destroy the API key
+	err := client.DeleteAPIKey(context.Background(), d.Id())
+	if err != nil {
+		return diag.Errorf("Error deleting API key: %s", err)
+	}
+
+	return nil
+}
+
+func resourceMailgunApiKeyRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+
+	client, errc := meta.(*Config).GetClient("us")
+	if errc != nil {
+		return diag.FromErr(errc)
+	}
+
+	err := resourceMailgunApiKeyRetrieve(d.Id(), client, d)
+
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	return nil
+}
+
+func resourceMailgunApiKeyRetrieve(id string, client *mailgun.Client, d *schema.ResourceData) error {
+	resp, err := client.ListAPIKeys(context.Background(), nil)
+
+	if err != nil {
+		return fmt.Errorf("Error retrieving API key list: %s", err)
+	}
+
+	var apiKey mtypes.APIKey
+
+	for i, key := range resp {
+		if resp[i].ID == id {
+			apiKey = key
+		}
+	}
+
+	if apiKey.ID == "" {
+		log.Printf("[DEBUG] API key not found with ID: %s", d.Id())
+		return fmt.Errorf("API key not found: %s", id)
+	}
+
+	_ = d.Set("requestor", apiKey.Requestor)
+	_ = d.Set("secret", apiKey.Secret)
+
+	return nil
+}
+package mailgun
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/mailgun/mailgun-go/v5/mtypes"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/mailgun/mailgun-go/v5"
+)
+
+func resourceMailgunRoute() *schema.Resource {
+	return &schema.Resource{
+		CreateContext: resourceMailgunRouteCreate,
+		Read:          resourceMailgunRouteRead,
+		Update:        resourceMailgunRouteUpdate,
+		Delete:        resourceMailgunRouteDelete,
+		Importer: &schema.ResourceImporter{
+			StateContext: resourceMailgunRouteImport,
+		},
+
+		Schema: map[string]*schema.Schema{
+			"priority": {
+				Type:     schema.TypeInt,
+				Required: true,
+				ForceNew: false,
+			},
+
+			"region": {
+				Type:     schema.TypeString,
+				ForceNew: true,
+				Optional: true,
+				Default:  "us",
+			},
+
+			"description": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: false,
+			},
+
+			"expression": {
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: false,
+			},
+
+			"actions": {
+				Type:     schema.TypeList,
+				Required: true,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+			},
+		},
+	}
+}
+
+func resourceMailgunRouteImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+
+	setDefaultRegionForImport(d)
+
+	return []*schema.ResourceData{d}, nil
+}
+
+func resourceMailgunRouteCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return diag.FromErr(errc)
+	}
+
+	opts := mtypes.Route{}
+
+	opts.Priority = d.Get("priority").(int)
+	opts.Description = d.Get("description").(string)
+	opts.Expression = d.Get("expression").(string)
+	actions := d.Get("actions").([]interface{})
+	actionArray := []string{}
+	for _, i := range actions {
+		action := i.(string)
+		actionArray = append(actionArray, action)
+	}
+	opts.Actions = actionArray
+	log.Printf("[DEBUG] Route create configuration: %v", opts)
+
+	route, err := client.CreateRoute(context.Background(), opts)
+
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	d.SetId(route.Id)
+
+	log.Printf("[INFO] Route ID: %s", d.Id())
+
+	// Retrieve and update state of route
+	_, err = resourceMailgunRouteRetrieve(d.Id(), client, d)
+
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	return nil
+}
+
+func resourceMailgunRouteUpdate(d *schema.ResourceData, meta interface{}) error {
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return errc
+	}
+
+	opts := mtypes.Route{}
+
+	opts.Priority = d.Get("priority").(int)
+	opts.Description = d.Get("description").(string)
+	opts.Expression = d.Get("expression").(string)
+	actions := d.Get("actions").([]interface{})
+	actionArray := []string{}
+
+	for _, i := range actions {
+		action := i.(string)
+		actionArray = append(actionArray, action)
+	}
+	opts.Actions = actionArray
+
+	log.Printf("[DEBUG] Route update configuration: %v", opts)
+
+	route, err := client.UpdateRoute(context.Background(), d.Id(), opts)
+
+	if err != nil {
+		return err
+	}
+
+	d.SetId(route.Id)
+
+	log.Printf("[INFO] Route ID: %s", d.Id())
+
+	// Retrieve and update state of route
+	_, err = resourceMailgunRouteRetrieve(d.Id(), client, d)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func resourceMailgunRouteDelete(d *schema.ResourceData, meta interface{}) error {
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return errc
+	}
+
+	log.Printf("[INFO] Deleting Route: %s", d.Id())
+
+	// Destroy the route
+	err := client.DeleteRoute(context.Background(), d.Id())
+	if err != nil {
+		return fmt.Errorf("Error deleting route: %s", err)
+	}
+
+	// Give the destroy a chance to take effect
+	return resource.RetryContext(context.Background(), 1*time.Minute, func() *resource.RetryError {
+		_, err = client.GetRoute(context.Background(), d.Id())
+		if err == nil {
+			log.Printf("[INFO] Retrying until route disappears...")
+			return resource.RetryableError(
+				fmt.Errorf("route seems to still exist; will check again"))
+		}
+		log.Printf("[INFO] Got error looking for route, seems gone: %s", err)
+		return nil
+	})
+}
+
+func resourceMailgunRouteRead(d *schema.ResourceData, meta interface{}) error {
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return errc
+	}
+
+	_, err := resourceMailgunRouteRetrieve(d.Id(), client, d)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func resourceMailgunRouteRetrieve(id string, client *mailgun.Client, d *schema.ResourceData) (*mtypes.Route, error) {
+
+	route, err := client.GetRoute(context.Background(), id)
+
+	if err != nil {
+		return nil, fmt.Errorf("Error retrieving route: %s", err)
+	}
+
+	_ = d.Set("priority", route.Priority)
+	_ = d.Set("description", route.Description)
+	_ = d.Set("expression", route.Expression)
+	_ = d.Set("actions", route.Actions)
+
+	return &route, nil
+}
+package mailgun
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"strings"
+	"time"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/mailgun/mailgun-go/v5/mtypes"
+)
+
+func resourceMailgunCredential() *schema.Resource {
+	log.Printf("[DEBUG] resourceMailgunCredential()")
+
+	return &schema.Resource{
+		CreateContext: resourceMailgunCredentialCreate,
+		Read:          resourceMailgunCredentialRead,
+		Update:        resourceMailgunCredentialUpdate,
+		Delete:        resourceMailgunCredentialDelete,
+		Importer: &schema.ResourceImporter{
+			StateContext: resourceMailgunCredentialImport,
+		},
+
+		Schema: map[string]*schema.Schema{
+			"login": {
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+			},
+
+			"password": {
+				Type:      schema.TypeString,
+				ForceNew:  false,
+				Required:  true,
+				Sensitive: true,
+			},
+
+			"domain": {
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+			},
+
+			"region": {
+				Type:     schema.TypeString,
+				ForceNew: true,
+				Optional: true,
+				Default:  "us",
+			},
+		},
+	}
+}
+
+func resourceMailgunCredentialImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+
+	setDefaultRegionForImport(d)
+
+	log.Printf("[DEBUG] Import credential for region '%s' and email '%s'", d.Get("region"), d.Id())
+
+	return []*schema.ResourceData{d}, nil
+}
+
+func resourceMailgunCredentialCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return diag.FromErr(errc)
+	}
+
+	email := fmt.Sprintf("%s@%s", d.Get("login").(string), d.Get("domain").(string))
+	password := d.Get("password").(string)
+
+	log.Printf("[DEBUG] Credential create configuration: email: %s", email)
+
+	err := client.CreateCredential(context.Background(), d.Get("domain").(string), email, password)
+
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	d.SetId(email)
+
+	log.Printf("[INFO] Create credential ID: %s", d.Id())
+
+	return nil
+}
+
+func resourceMailgunCredentialUpdate(d *schema.ResourceData, meta interface{}) error {
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return errc
+	}
+
+	email := fmt.Sprintf("%s@%s", d.Get("login").(string), d.Get("domain").(string))
+	password := d.Get("password").(string)
+
+	log.Printf("[DEBUG] Credential create configuration: email: %s", email)
+
+	err := client.ChangeCredentialPassword(context.Background(), d.Get("domain").(string), email, password)
+
+	if err != nil {
+		return err
+	}
+
+	d.SetId(email)
+
+	log.Printf("[INFO] Update credential ID: %s", d.Id())
+
+	return nil
+}
+
+func resourceMailgunCredentialDelete(d *schema.ResourceData, meta interface{}) error {
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return errc
+	}
+
+	email := fmt.Sprintf("%s@%s", d.Get("login").(string), d.Get("domain").(string))
+	err := client.DeleteCredential(context.Background(), d.Get("domain").(string), email)
+
+	if err != nil {
+		return fmt.Errorf("Error deleting credential: %s", err)
+	}
+
+	return nil
+}
+
+func resourceMailgunCredentialRead(d *schema.ResourceData, meta interface{}) error {
+	parts := strings.SplitN(d.Id(), "@", 2)
+
+	if len(parts) != 2 {
+		return fmt.Errorf("The ID of credential '%s' don't contains domain!", d.Id())
+	}
+
+	login := parts[0]
+	domain := parts[1]
+
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return errc
+	}
+
+	log.Printf("[DEBUG] Read credential for region '%s' and email '%s'", d.Get("region"), d.Id())
+
+	itCredentials := client.ListCredentials(domain, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+	defer cancel()
+
+	var page []mtypes.Credential
+
+	for itCredentials.Next(ctx, &page) {
+		log.Printf("[DEBUG] Read credential get new page")
+
+		for _, c := range page {
+			if c.Login == d.Id() {
+				_ = d.Set("login", login)
+				_ = d.Set("domain", domain)
+				return nil
+			}
+		}
+	}
+
+	if err := itCredentials.Err(); err != nil {
+		return err
+	}
+
+	return fmt.Errorf("The credential '%s' not found!", d.Id())
+}
+package mailgun
+
+import (
+	"context"
+	"fmt"
+	"github.com/mailgun/mailgun-go/v5/mtypes"
+	"log"
+	"strings"
+	"time"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/mailgun/mailgun-go/v5"
+)
+
+func resourceMailgunDomain() *schema.Resource {
+	return &schema.Resource{
+		CreateContext: resourceMailgunDomainCreate,
+		ReadContext:   resourceMailgunDomainRead,
+		UpdateContext: resourceMailgunDomainUpdate,
+		DeleteContext: resourceMailgunDomainDelete,
+		Importer: &schema.ResourceImporter{
+			StateContext: resourceMailgunDomainImport,
+		},
+		Schema: map[string]*schema.Schema{
+			"name": {
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+			},
+
+			"region": {
+				Type:     schema.TypeString,
+				ForceNew: true,
+				Optional: true,
+				Default:  "us",
+			},
+
+			"spam_action": {
+				Type:     schema.TypeString,
+				ForceNew: true,
+				Optional: true,
+				Default:  "disabled",
+			},
+
+			"smtp_login": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+
+			"smtp_password": {
+				Type:      schema.TypeString,
+				Optional:  true,
+				ForceNew:  false,
+				Sensitive: true,
+			},
+
+			"wildcard": {
+				Type:     schema.TypeBool,
+				ForceNew: true,
+				Optional: true,
+			},
+
+			"dkim_selector": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+			},
+
+			"force_dkim_authority": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				ForceNew: true,
+			},
+
+			"open_tracking": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				ForceNew: false,
+				Default:  false,
+			},
+
+			"click_tracking": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				ForceNew: false,
+				Default:  false,
+			},
+
+			"web_scheme": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: false,
+				Default:  "http",
+			},
+
+			"receiving_records": {
+				Type:       schema.TypeList,
+				Computed:   true,
+				Deprecated: "Use `receiving_records_set` instead.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"id": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"priority": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"record_type": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"valid": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"value": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+					},
+				},
+			},
+
+			"receiving_records_set": {
+				Type:     schema.TypeSet,
+				Computed: true,
+				Set:      domainRecordsSchemaSetFunc,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"id": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"priority": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"record_type": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"valid": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"value": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+					},
+				},
+			},
+
+			"sending_records": {
+				Type:       schema.TypeList,
+				Computed:   true,
+				Deprecated: "Use `sending_records_set` instead.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"id": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"name": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"record_type": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"valid": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"value": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+					},
+				},
+			},
+
+			"sending_records_set": {
+				Type:     schema.TypeSet,
+				Computed: true,
+				Set:      domainRecordsSchemaSetFunc,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"id": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"name": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"record_type": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"valid": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"value": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+					},
+				},
+			},
+			"dkim_key_size": {
+				Type:     schema.TypeInt,
+				Optional: true,
+				ForceNew: true,
+			},
+		},
+		CustomizeDiff: customdiff.Sequence(
+			func(_ context.Context, diff *schema.ResourceDiff, v interface{}) error {
+				if diff.HasChange("name") {
+					var sendingRecords []interface{}
+
+					sendingRecords = append(sendingRecords, map[string]interface{}{"id": diff.Get("name").(string)})
+					sendingRecords = append(sendingRecords, map[string]interface{}{"id": "_domainkey." + diff.Get("name").(string)})
+					sendingRecords = append(sendingRecords, map[string]interface{}{"id": "email." + diff.Get("name").(string)})
+
+					if err := diff.SetNew("sending_records_set", schema.NewSet(domainRecordsSchemaSetFunc, sendingRecords)); err != nil {
+						return fmt.Errorf("error setting new sending_records_set diff: %w", err)
+					}
+
+					var receivingRecords []interface{}
+
+					receivingRecords = append(receivingRecords, map[string]interface{}{"id": "mxa.mailgun.org"})
+					receivingRecords = append(receivingRecords, map[string]interface{}{"id": "mxb.mailgun.org"})
+
+					if err := diff.SetNew("receiving_records_set", schema.NewSet(domainRecordsSchemaSetFunc, receivingRecords)); err != nil {
+						return fmt.Errorf("error setting new receiving_records_set diff: %w", err)
+					}
+				}
+
+				return nil
+			},
+		),
+	}
+}
+
+func domainRecordsSchemaSetFunc(v interface{}) int {
+	m, ok := v.(map[string]interface{})
+
+	if !ok {
+		return 0
+	}
+
+	if v, ok := m["id"].(string); ok {
+		return stringHashcode(v)
+	}
+
+	return 0
+}
+
+func resourceMailgunDomainImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+
+	setDefaultRegionForImport(d)
+
+	return []*schema.ResourceData{d}, nil
+}
+
+func resourceMailgunDomainUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	var name = d.Get("name").(string)
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return diag.FromErr(errc)
+	}
+
+	var currentData schema.ResourceData
+	var newPassword = d.Get("smtp_password").(string)
+	var smtpLogin = d.Get("smtp_login").(string)
+	var openTracking = d.Get("open_tracking").(bool)
+	var clickTracking = d.Get("click_tracking").(bool)
+	var webScheme = d.Get("web_scheme").(string)
+
+	// Retrieve and update state of domain
+	_, errc = resourceMailgunDomainRetrieve(d.Id(), client, &currentData)
+
+	if errc != nil {
+		return diag.FromErr(errc)
+	}
+
+	// Update default credential if changed
+	if currentData.Get("smtp_password") != newPassword {
+		errc = client.ChangeCredentialPassword(ctx, name, smtpLogin, newPassword)
+
+		if errc != nil {
+			return diag.FromErr(errc)
+		}
+	}
+
+	if currentData.Get("open_tracking") != openTracking {
+		var openTrackingValue = "no"
+		if openTracking {
+			openTrackingValue = "yes"
+		}
+		errc = client.UpdateOpenTracking(ctx, name, openTrackingValue)
+
+		if errc != nil {
+			return diag.FromErr(errc)
+		}
+	}
+
+	if currentData.Get("click_tracking") != clickTracking {
+		var clickTrackingValue = "no"
+		if clickTracking {
+			clickTrackingValue = "yes"
+		}
+		errc = client.UpdateClickTracking(ctx, d.Get("name").(string), clickTrackingValue)
+
+		if errc != nil {
+			return diag.FromErr(errc)
+		}
+	}
+
+	if currentData.Get("web_scheme") != webScheme {
+		opts := mailgun.UpdateDomainOptions{}
+		opts.WebScheme = webScheme
+		errc = client.UpdateDomain(ctx, name, &opts)
+
+		if errc != nil {
+			return diag.FromErr(errc)
+		}
+	}
+
+	return nil
+}
+
+func resourceMailgunDomainCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return diag.FromErr(errc)
+	}
+
+	opts := mailgun.CreateDomainOptions{}
+
+	name := d.Get("name").(string)
+
+	opts.SpamAction = mtypes.SpamAction(d.Get("spam_action").(string))
+	opts.Password = d.Get("smtp_password").(string)
+	opts.Wildcard = d.Get("wildcard").(bool)
+	opts.DKIMKeySize = d.Get("dkim_key_size").(int)
+	opts.ForceDKIMAuthority = d.Get("force_dkim_authority").(bool)
+	opts.WebScheme = d.Get("web_scheme").(string)
+	var dkimSelector = d.Get("dkim_selector").(string)
+	var openTracking = d.Get("open_tracking").(bool)
+	var clickTracking = d.Get("click_tracking").(bool)
+
+	log.Printf("[DEBUG] Domain create configuration: %#v", opts)
+
+	_, err := client.CreateDomain(context.Background(), name, &opts)
+
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	if dkimSelector != "" {
+		errc = client.UpdateDomainDkimSelector(ctx, name, dkimSelector)
+
+		if errc != nil {
+			return diag.FromErr(errc)
+		}
+	}
+	if openTracking {
+		errc = client.UpdateOpenTracking(ctx, name, "yes")
+
+		if errc != nil {
+			return diag.FromErr(errc)
+		}
+	}
+	if clickTracking {
+		errc = client.UpdateClickTracking(ctx, d.Get("name").(string), "yes")
+
+		if errc != nil {
+			return diag.FromErr(errc)
+		}
+	}
+
+	d.SetId(name)
+
+	log.Printf("[INFO] Domain ID: %s", d.Id())
+
+	// Retrieve and update state of domain
+	_, err = resourceMailgunDomainRetrieve(d.Id(), client, d)
+
+	if err != nil {
+		return diag.FromErr(errc)
+	}
+
+	return nil
+}
+
+func resourceMailgunDomainDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return diag.FromErr(errc)
+	}
+
+	log.Printf("[INFO] Deleting Domain: %s", d.Id())
+
+	// Destroy the domain
+	err := client.DeleteDomain(context.Background(), d.Id())
+	if err != nil {
+		return diag.Errorf("Error deleting domain: %s", err)
+	}
+
+	// Give the destroy a chance to take effect
+	err = resource.RetryContext(ctx, 5*time.Minute, func() *resource.RetryError {
+		_, err = client.GetDomain(ctx, d.Id(), nil)
+		if err == nil {
+			log.Printf("[INFO] Retrying until domain disappears...")
+			return resource.RetryableError(
+				fmt.Errorf("domain seems to still exist; will check again"))
+		}
+		log.Printf("[INFO] Got error looking for domain, seems gone: %s", err)
+		return nil
+	})
+
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	return nil
+}
+
+func resourceMailgunDomainRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return diag.FromErr(errc)
+	}
+
+	_, err := resourceMailgunDomainRetrieve(d.Id(), client, d)
+
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	return nil
+}
+
+func resourceMailgunDomainRetrieve(id string, client *mailgun.Client, d *schema.ResourceData) (*mtypes.GetDomainResponse, error) {
+
+	resp, err := client.GetDomain(context.Background(), id, nil)
+
+	if err != nil {
+		return nil, fmt.Errorf("Error retrieving domain: %s", err)
+	}
+
+	_ = d.Set("name", resp.Domain.Name)
+	_ = d.Set("smtp_login", resp.Domain.SMTPLogin)
+	_ = d.Set("wildcard", resp.Domain.Wildcard)
+	_ = d.Set("spam_action", resp.Domain.SpamAction)
+	_ = d.Set("web_scheme", resp.Domain.WebScheme)
+
+	receivingRecords := make([]map[string]interface{}, len(resp.ReceivingDNSRecords))
+	for i, r := range resp.ReceivingDNSRecords {
+		receivingRecords[i] = make(map[string]interface{})
+		receivingRecords[i]["id"] = r.Value
+		receivingRecords[i]["priority"] = r.Priority
+		receivingRecords[i]["valid"] = r.Valid
+		receivingRecords[i]["value"] = r.Value
+		receivingRecords[i]["record_type"] = r.RecordType
+	}
+	_ = d.Set("receiving_records", receivingRecords)
+	_ = d.Set("receiving_records_set", receivingRecords)
+
+	sendingRecords := make([]map[string]interface{}, len(resp.SendingDNSRecords))
+	for i, r := range resp.SendingDNSRecords {
+		sendingRecords[i] = make(map[string]interface{})
+		sendingRecords[i]["id"] = r.Name
+		sendingRecords[i]["name"] = r.Name
+		sendingRecords[i]["valid"] = r.Valid
+		sendingRecords[i]["value"] = r.Value
+		sendingRecords[i]["record_type"] = r.RecordType
+
+		if strings.Contains(r.Name, "._domainkey.") {
+			sendingRecords[i]["id"] = "_domainkey." + resp.Domain.Name
+		}
+	}
+	_ = d.Set("sending_records", sendingRecords)
+	_ = d.Set("sending_records_set", sendingRecords)
+
+	info, err := client.GetDomainTracking(context.Background(), id)
+	var openTracking = false
+	if info.Open.Active {
+		openTracking = true
+	}
+	_ = d.Set("open_tracking", openTracking)
+
+	var clickTracking = false
+	if info.Click.Active {
+		clickTracking = true
+	}
+	_ = d.Set("click_tracking", clickTracking)
+
+	return &resp, nil
+}
+package mailgun
+
+import (
+	"context"
+	"fmt"
+	"testing"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/mailgun/mailgun-go/v5/mtypes"
+)
+
+func TestAccMailgunApiKey_Basic(t *testing.T) {
+	var resp mtypes.APIKey
+	role := "admin"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: newProvider(),
+		CheckDestroy:      testAccCheckMailgunApiKeyDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccCheckMailgunApiKeyConfig(role),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckMailgunApiKeyExists("mailgun_api_key.foobar", &resp),
+					testAccCheckMailgunApiKeyAttributes(role, &resp),
+					resource.TestCheckResourceAttr(
+						"mailgun_api_key.foobar", "role", role),
+					resource.TestCheckResourceAttr(
+						"mailgun_api_key.foobar", "description", "Test API key"),
+					resource.TestCheckResourceAttr(
+						"mailgun_api_key.foobar", "kind", "user"),
+				),
+			},
+		},
+	})
+}
+
+func testAccCheckMailgunApiKeyDestroy(s *terraform.State) error {
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "mailgun_api_key" {
+			continue
+		}
+
+		client, errc := testAccProvider.Meta().(*Config).GetClient(rs.Primary.Attributes["region"])
+		if errc != nil {
+			return errc
+		}
+
+		resp, _ := client.ListAPIKeys(context.Background(), nil)
+
+		for _, key := range resp {
+			if key.ID == rs.Primary.ID {
+				return fmt.Errorf("API key still exists: %#v", resp)
+			}
+		}
+	}
+
+	return nil
+}
+
+func testAccCheckMailgunApiKeyAttributes(id string, APIKey *mtypes.APIKey) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		if APIKey.ID != id {
+			return fmt.Errorf("Bad ID: %s", APIKey.ID)
+		}
+
+		return nil
+	}
+}
+
+func testAccCheckMailgunApiKeyExists(n string, APIKey *mtypes.APIKey) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[n]
+
+		if !ok {
+			return fmt.Errorf("Not found: %s", n)
+		}
+
+		if rs.Primary.ID == "" {
+			return fmt.Errorf("No API key ID is set")
+		}
+
+		client, errc := testAccProvider.Meta().(*Config).GetClient(rs.Primary.Attributes["region"])
+		if errc != nil {
+			return errc
+		}
+
+		resp, err := client.ListAPIKeys(context.Background(), nil)
+
+		if err != nil {
+			return err
+		}
+
+		for _, key := range resp {
+			if key.ID == rs.Primary.ID {
+				*APIKey = key
+				return nil
+			}
+		}
+
+		return fmt.Errorf("API key not found")
+	}
+}
+
+func testAccCheckMailgunApiKeyConfig(id string) string {
+	return `
+resource "mailgun_api_key" "foobar" {
+    id = "` + id + `"
+	description = "Test API key"
+	role = "admin"
+	kind = "user"
+}`
+}
+package mailgun
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+)
+
+func resourceMailgunWebhook() *schema.Resource {
+	log.Printf("[DEBUG] resourceMailgunWebhook()")
+
+	return &schema.Resource{
+		CreateContext: resourceMailgunWebhookCreate,
+		ReadContext:   resourceMailgunWebhookRead,
+		UpdateContext: resourceMailgunWebhookUpdate,
+		DeleteContext: resourceMailgunWebhookDelete,
+		Importer: &schema.ResourceImporter{
+			StateContext: resourceMailgunWebhookImport,
+		},
+
+		Schema: map[string]*schema.Schema{
+			"region": {
+				Type:     schema.TypeString,
+				ForceNew: true,
+				Optional: true,
+				Default:  "us",
+			},
+
+			"domain": {
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+			},
+
+			"kind": {
+				Type:     schema.TypeString,
+				ForceNew: true,
+				Required: true,
+				ValidateFunc: func(val interface{}, key string) (warns []string, errs []error) {
+					v := val.(string)
+					allowedKinds := []string{"accepted", "clicked", "complained", "delivered", "opened", "permanent_fail", "temporary_fail", "unsubscribed"}
+					matched := false
+					for _, kind := range allowedKinds {
+						if kind == v {
+							matched = true
+						}
+					}
+					if !matched {
+						errs = append(errs, fmt.Errorf("kind must be %s", allowedKinds))
+					}
+					return
+				},
+			},
+
+			"urls": {
+				Type:     schema.TypeSet,
+				Required: true,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+			},
+		},
+	}
+}
+
+func resourceMailgunWebhookImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	setDefaultRegionForImport(d)
+
+	return []*schema.ResourceData{d}, nil
+}
+
+func resourceMailgunWebhookCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return diag.FromErr(errc)
+	}
+
+	kind := d.Get("kind").(string)
+	urls := d.Get("urls").(*schema.Set)
+
+	stringUrls := []string{}
+	for _, url := range urls.List() {
+		stringUrls = append(stringUrls, url.(string))
+	}
+
+	err := client.CreateWebhook(ctx, d.Get("domain").(string), kind, stringUrls)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	id := generateId(d)
+	d.SetId(id)
+
+	log.Printf("[INFO] Create webhook ID: %s", d.Id())
+
+	return resourceMailgunWebhookRead(ctx, d, meta)
+}
+
+func resourceMailgunWebhookUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return diag.FromErr(errc)
+	}
+
+	kind := d.Get("kind").(string)
+	urls := d.Get("urls").(*schema.Set)
+
+	stringUrls := []string{}
+	for _, url := range urls.List() {
+		stringUrls = append(stringUrls, url.(string))
+	}
+
+	err := client.UpdateWebhook(ctx, d.Get("domain").(string), kind, stringUrls)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	log.Printf("[INFO] Update webhook ID: %s", d.Id())
+
+	return resourceMailgunWebhookRead(ctx, d, meta)
+}
+
+func resourceMailgunWebhookDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return diag.FromErr(errc)
+	}
+
+	kind := d.Get("kind").(string)
+
+	err := client.DeleteWebhook(ctx, d.Get("domain").(string), kind)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	log.Printf("[INFO] Delete webhook ID: %s", d.Id())
+
+	return nil
+}
+
+func resourceMailgunWebhookRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return diag.FromErr(errc)
+	}
+
+	kind := d.Get("kind").(string)
+	urls, err := client.GetWebhook(ctx, d.Get("domain").(string), kind)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	_ = d.Set("kind", kind)
+	_ = d.Set("urls", urls)
+
+	return nil
+}
+
+func generateId(d *schema.ResourceData) string {
+	region := d.Get("region").(string)
+	domain := d.Get("domain").(string)
+	kind := d.Get("kind").(string)
+	return fmt.Sprintf("%s:%s:%s", region, domain, kind)
+}
+package mailgun
+
+import (
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"hash/crc32"
+	"strings"
+)
+
+func setDefaultRegionForImport(d *schema.ResourceData) {
+	parts := strings.SplitN(d.Id(), ":", 2)
+
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		_ = d.Set("region", "us")
+	} else {
+		_ = d.Set("region", parts[0])
+		d.SetId(parts[1])
+	}
+}
+
+// stringHashcode hashes a string to a unique hashcode.
+//
+// crc32 returns an uint32, but for our use we need
+// and non-negative integer. Here we cast to an integer
+// and invert it if the result is negative.
+func stringHashcode(s string) int {
+	v := int(crc32.ChecksumIEEE([]byte(s)))
+	if v >= 0 {
+		return v
+	}
+	if -v >= 0 {
+		return -v
+	}
+	// v == MinInt
+	return 0
+}
+package mailgun
+
+import (
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+)
+
+func dataSourceMailgunDomain() *schema.Resource {
+
+	mailgunSchema := resourceMailgunDomain()
+
+	return &schema.Resource{
+		Read:   dataSourceMailgunDomainRead,
+		Schema: mailgunSchema.Schema,
+	}
+}
+
+func dataSourceMailgunDomainRead(d *schema.ResourceData, meta interface{}) error {
+	client, errc := meta.(*Config).GetClient(d.Get("region").(string))
+	if errc != nil {
+		return errc
+	}
+
+	name := d.Get("name").(string)
+
+	_, err := resourceMailgunDomainRetrieve(name, client, d)
+
+	if err != nil {
+		return err
+	}
+
+	d.SetId(name)
+	return nil
+}
+package mailgun
+
+import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/mailgun/mailgun-go/v5/mtypes"
+)
+
+func TestAccMailgunRoute_Basic(t *testing.T) {
+	var route mtypes.Route
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: newProvider(),
+		CheckDestroy:      testAccCheckMailgunRouteDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccCheckMailgunRouteConfig,
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckMailgunRouteExists("mailgun_route.foobar", &route),
+					resource.TestCheckResourceAttr(
+						"mailgun_route.foobar", "priority", "0"),
+					resource.TestCheckResourceAttr(
+						"mailgun_route.foobar", "description", "inbound"),
+					resource.TestCheckResourceAttr(
+						"mailgun_route.foobar", "expression", "match_recipient('.*@example.com')"),
+					resource.TestCheckResourceAttr(
+						"mailgun_route.foobar", "actions.0", "forward('http://example.com/api/v1/foos/')"),
+					resource.TestCheckResourceAttr(
+						"mailgun_route.foobar", "actions.1", "stop()"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccMailgunRoute_Import(t *testing.T) {
+	resourceName := "mailgun_route.foobar"
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: newProvider(),
+		CheckDestroy:      testAccCheckMailgunRouteDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccCheckMailgunRouteConfig,
+			},
+			{
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+func testAccCheckMailgunRouteDestroy(s *terraform.State) error {
+
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "mailgun_route" {
+			continue
+		}
+
+		client, _ := testAccProvider.Meta().(*Config).GetClient(rs.Primary.Attributes["region"])
+
+		route, err := client.GetRoute(context.Background(), rs.Primary.ID)
+
+		if err == nil {
+			return fmt.Errorf("Route still exists: %#v", route)
+		}
+	}
+
+	return nil
+}
+
+func testAccCheckMailgunRouteExists(n string, Route *mtypes.Route) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[n]
+
+		if !ok {
+			return fmt.Errorf("Not found: %s", n)
+		}
+
+		if rs.Primary.ID == "" {
+			return fmt.Errorf("No Route ID is set")
+		}
+
+		client := testAccProvider.Meta().(*Config)
+
+		err := resource.RetryContext(context.Background(), 1*time.Minute, func() *resource.RetryError {
+			var err error
+			*Route, err = client.MailgunClient.GetRoute(context.Background(), rs.Primary.ID)
+
+			if err != nil {
+				return resource.NonRetryableError(err)
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			return fmt.Errorf("Unable to find Route after retries: %s", err)
+		}
+
+		if Route.Id != rs.Primary.ID {
+			return fmt.Errorf("Route not found")
+		}
+
+		return nil
+	}
+}
+
+const testAccCheckMailgunRouteConfig = `
+resource "mailgun_route" "foobar" {
+    priority = "0"
+    description = "inbound"
+    expression = "match_recipient('.*@example.com')"
+    actions = [
+        "forward('http://example.com/api/v1/foos/')",
+        "stop()"
+    ]
+}
+`
+package mailgun
+
+import (
+	"context"
+	"fmt"
+	"testing"
+
+	"github.com/hashicorp/go-uuid"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+)
+
+func TestAccMailgunWebhook_Basic(t *testing.T) {
+
+	uuid, _ := uuid.GenerateUUID()
+	domain := fmt.Sprintf("terraformcred.%s.com", uuid)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: newProvider(),
+		CheckDestroy:      testAccCheckMailgunWebhookDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccCheckMailgunWebhookConfig(domain),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"mailgun_webhook.foobar", "domain", domain),
+					resource.TestCheckResourceAttr(
+						"mailgun_webhook.foobar", "region", "us"),
+					resource.TestCheckResourceAttr(
+						"mailgun_webhook.foobar", "kind", "delivered"),
+					resource.TestCheckResourceAttr(
+						"mailgun_webhook.foobar", "urls.0", "https://hoge.com"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccMailgunWebhook_Import(t *testing.T) {
+	resourceName := "mailgun_webhook.foobar"
+	uuid, _ := uuid.GenerateUUID()
+	domain := fmt.Sprintf("terraform.%s.com", uuid)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: newProvider(),
+		CheckDestroy:      testAccCheckMailgunWebhookDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccCheckMailgunWebhookConfig(domain),
+			},
+
+			{
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+func testAccCheckMailgunWebhookDestroy(s *terraform.State) error {
+
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "mailgun_webhook" {
+			continue
+		}
+
+		client, _ := testAccProvider.Meta().(*Config).GetClient(rs.Primary.Attributes["region"])
+
+		kind := rs.Primary.Attributes["kind"]
+		webhooks, err := client.GetWebhook(context.Background(), rs.Primary.Attributes["domain"], kind)
+
+		if err == nil {
+			return fmt.Errorf("Webhook still exists: %#v", webhooks)
+		}
+	}
+
+	return nil
+}
+
+func testAccCheckMailgunWebhookConfig(domain string) string {
+	return `
+resource "mailgun_domain" "foobar" {
+    name = "` + domain + `"
+	spam_action = "disabled"
+	region = "us"
+    wildcard = true
+}
+
+resource "mailgun_webhook" "foobar" {
+  domain = mailgun_domain.foobar.id
+  region = "us"
+  kind = "delivered"
+  urls = ["https://hoge.com"]
+}`
+}
+package mailgun
+
+import (
+	"context"
+	"fmt"
+	"github.com/hashicorp/go-uuid"
+	"github.com/mailgun/mailgun-go/v5/mtypes"
+	"testing"
+	"time"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+)
+
+func TestAccMailgunDomainCredential_Basic(t *testing.T) {
+
+	uuid, _ := uuid.GenerateUUID()
+	domain := fmt.Sprintf("terraformcred.%s.com", uuid)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: newProvider(),
+		CheckDestroy:      testAccCheckMailgunCrendentialDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccCheckMailgunCredentialConfig(domain),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckMailgunCredentialExists("mailgun_domain_credential.foobar"),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain_credential.foobar", "domain", domain),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain_credential.foobar", "login", "test_crendential"),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain_credential.foobar", "password", "supersecretpassword1234"),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain_credential.foobar", "region", "us"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccMailgunDomainCredential_Update(t *testing.T) {
+
+	uuid, _ := uuid.GenerateUUID()
+	domain := fmt.Sprintf("terraform.%s.com", uuid)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: newProvider(),
+		CheckDestroy:      testAccCheckMailgunCrendentialDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccCheckMailgunCredentialConfig(domain),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckMailgunCredentialExists("mailgun_domain_credential.foobar"),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain_credential.foobar", "domain", domain),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain_credential.foobar", "login", "test_crendential"),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain_credential.foobar", "password", "supersecretpassword1234"),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain_credential.foobar", "region", "us"),
+				),
+			},
+			{
+				Config: testAccCheckMailgunCredentialConfigUpdate(domain),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckMailgunCredentialExists("mailgun_domain_credential.foobar"),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain_credential.foobar", "domain", domain),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain_credential.foobar", "login", "test_crendential"),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain_credential.foobar", "password", "azertyuyiop123456987"),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain_credential.foobar", "region", "us"),
+				),
+			},
+		},
+	})
+}
+
+func testAccCheckMailgunCrendentialDestroy(s *terraform.State) error {
+
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "mailgun_domain_credential" {
+			continue
+		}
+
+		client, err := testAccProvider.Meta().(*Config).GetClient(rs.Primary.Attributes["region"])
+
+		resp, err := client.GetDomain(context.Background(), rs.Primary.Attributes["domain"], nil)
+		if err == nil {
+
+			itCredentials := client.ListCredentials(rs.Primary.Attributes["domain"], nil)
+
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+			defer cancel()
+
+			var page []mtypes.Credential
+
+			for itCredentials.Next(ctx, &page) {
+
+				for _, c := range page {
+					if c.Login == rs.Primary.ID {
+						return fmt.Errorf("The credential '%s' found! Created at: %s", rs.Primary.ID, c.CreatedAt.String())
+					}
+				}
+			}
+
+			if err := itCredentials.Err(); err != nil {
+				return err
+			}
+
+			return fmt.Errorf("Domain still exists: %#v", resp)
+		}
+	}
+
+	return nil
+}
+
+func testAccCheckMailgunCredentialExists(n string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[n]
+
+		if !ok {
+			return fmt.Errorf("Not found: %s", n)
+		}
+
+		if rs.Primary.ID == "" {
+			return fmt.Errorf("No domain credential ID is set")
+		}
+
+		client, _ := testAccProvider.Meta().(*Config).GetClient(rs.Primary.Attributes["region"])
+
+		itCredentials := client.ListCredentials(rs.Primary.Attributes["domain"], nil)
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+		defer cancel()
+
+		var page []mtypes.Credential
+
+		for itCredentials.Next(ctx, &page) {
+			for _, c := range page {
+				if c.Login == rs.Primary.ID {
+					return nil
+				}
+			}
+		}
+
+		if err := itCredentials.Err(); err != nil {
+			return err
+		}
+
+		return fmt.Errorf("The credential '%s' not found!", rs.Primary.ID)
+	}
+}
+
+func testAccCheckMailgunCredentialConfig(domain string) string {
+	return `
+resource "mailgun_domain" "foobar" {
+    name = "` + domain + `"
+	spam_action = "disabled"
+	region = "us"
+    wildcard = true
+}
+
+resource "mailgun_domain_credential" "foobar" {
+	domain = mailgun_domain.foobar.id
+	login = "test_crendential"
+	password = "supersecretpassword1234"
+	region = "us"
+}`
+}
+
+func testAccCheckMailgunCredentialConfigUpdate(domain string) string {
+	return `
+resource "mailgun_domain" "foobar" {
+    name = "` + domain + `"
+	spam_action = "disabled"
+	region = "us"
+    wildcard = true
+}
+
+resource "mailgun_domain_credential" "foobar" {
+	domain = mailgun_domain.foobar.id
+	login = "test_crendential"
+	password = "azertyuyiop123456987"
+	region = "us"
+}`
+}
+package mailgun
+
+import (
+	"fmt"
+	"testing"
+
+	"github.com/hashicorp/go-uuid"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+)
+
+func TestAccMailgunDomainDataSource_Basic(t *testing.T) {
+	uuid, _ := uuid.GenerateUUID()
+	domain := fmt.Sprintf("terraform.%s.com", uuid)
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+		},
+		ProviderFactories: newProvider(),
+		CheckDestroy:      testAccCheckMailgunDomainDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccMailgunDomainDataSourceConfig_Basic(domain),
+				Check: resource.ComposeTestCheckFunc(
+					testAccDataSourceMailgunDomainCheck("data.mailgun_domain.test", domain),
+				),
+			},
+		},
+	})
+}
+
+func testAccDataSourceMailgunDomainCheck(name string, domain string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[name]
+		if !ok {
+			return fmt.Errorf("root module has no resource called %s\n%#v", name, rs)
+		}
+
+		attr := rs.Primary.Attributes
+
+		if attr["name"] != domain {
+			return fmt.Errorf("bad name %s", attr["name"])
+		}
+
+		if attr["spam_action"] != "disabled" {
+			return fmt.Errorf("Bad spam_action: %s", attr["spam_action"])
+		}
+
+		if attr["wildcard"] != "false" {
+			return fmt.Errorf("Bad wildcard: %s", attr["wildcard"])
+		}
+
+		return nil
+	}
+}
+
+func testAccMailgunDomainDataSourceConfig_Basic(domain string) string {
+	return fmt.Sprintf(`
+resource "mailgun_domain" "foobar" {
+	name = "%s"
+	spam_action = "disabled"
+	wildcard = false
+}
+data "mailgun_domain" "test" {
+	name = mailgun_domain.foobar.id
+}
+`, domain)
+}
+dist: trusty
+sudo: required
+services:
+- docker
+language: go
+go:
+- 1.24.1
+
+install:
+# This script is used by the Travis build to install a cookie for
+# go.googlesource.com so rate limits are higher when using `go get` to fetch
+# packages that live there.
+# See: https://github.com/golang/go/issues/12933
+- bash scripts/gogetcookie.sh
+- go get github.com/kardianos/govendor
+
+script:
+- make test
+- make vendor-status
+- make vet
+- make website-test
+
+branches:
+  only:
+  - master
+matrix:
+  fast_finish: true
+  allow_failures:
+  - go: tip
+package main
+
+import (
+	"github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
+	"github.com/terraform-providers/terraform-provider-mailgun/mailgun"
+)
+
+func main() {
+	plugin.Serve(&plugin.ServeOpts{
+		ProviderFunc: mailgun.Provider})
+}
