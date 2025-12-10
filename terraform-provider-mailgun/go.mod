@@ -1,6 +1,6 @@
 module github.com/murad-heydarov/terraform-provider-mailgun
 
-go 1.21
+go 1.23
 
 require (
 	github.com/hashicorp/go-uuid v1.0.3

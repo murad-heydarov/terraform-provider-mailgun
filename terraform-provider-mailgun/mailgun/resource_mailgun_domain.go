@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/mailgun/mailgun-go/v5/mtypes"
 	"io"
 	"log"
 	"net/http"
@@ -17,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/mailgun/mailgun-go/v5"
+	"github.com/mailgun/mailgun-go/v5/mtypes"
 )
 
 func resourceMailgunDomain() *schema.Resource {
@@ -577,6 +577,7 @@ func resourceMailgunDomainRetrieve(id string, client *mailgun.Client, d *schema.
 }
 
 // setAutomaticSenderSecurity enables automatic sender security via API v4
+// Uses multipart/form-data as required by Mailgun API v4
 func setAutomaticSenderSecurity(ctx context.Context, domain string, apiKey string, region string) error {
 	baseURL := "https://api.mailgun.net"
 	if strings.ToLower(region) == "eu" {
@@ -584,23 +585,18 @@ func setAutomaticSenderSecurity(ctx context.Context, domain string, apiKey strin
 	}
 
 	url := fmt.Sprintf("%s/v4/domains/%s", baseURL, domain)
-	
-	payload := map[string]interface{}{
-		"use_automatic_sender_security": true,
-	}
-	
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("error marshaling JSON: %w", err)
-	}
 
-	req, err := http.NewRequestWithContext(ctx, "PUT", url, bytes.NewBuffer(jsonData))
+	// Create multipart form data
+	body := &bytes.Buffer{}
+	body.WriteString("use_automatic_sender_security=true")
+
+	req, err := http.NewRequestWithContext(ctx, "PUT", url, body)
 	if err != nil {
 		return fmt.Errorf("error creating request: %w", err)
 	}
 
 	req.SetBasicAuth("api", apiKey)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -610,11 +606,11 @@ func setAutomaticSenderSecurity(ctx context.Context, domain string, apiKey strin
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("API v4 request failed with status %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	log.Printf("[INFO] Automatic sender security enabled for domain: %s", domain)
+	log.Printf("[INFO] Automatic sender security enabled for domain: %s (API v4)", domain)
 	return nil
 }
 
