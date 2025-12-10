@@ -1,62 +1,52 @@
-Terraform Provider
-==================
+# Mailgun Terraform Provider
 
-- Website: https://registry.terraform.io/providers/wgebis/mailgun/
-- [![Gitter chat](https://badges.gitter.im/hashicorp-terraform/Lobby.png)](https://gitter.im/hashicorp-terraform/Lobby)
-- Mailing list: [Google Groups](http://groups.google.com/group/terraform-tool)
+This repository hosts `murad-heydarov/terraform-mailgun-provider`, a fork of the official Mailgun provider tailored for WL automation projects. It keeps feature-parity with the upstream provider and adds:
 
-Requirements
-------------
+- `mailgun_domain_verification` – fully automated DNS verification with optional polling.
+- First-class support for `use_automatic_sender_security` on domains.
+- End-to-end documentation aimed at WL automation workflows.
 
--	[Terraform](https://www.terraform.io/downloads.html) 0.13.x
--	[Go](https://golang.org/doc/install) 1.24.1 (to build the provider plugin)
+## Requirements
 
-Building The Provider
----------------------
+- [Terraform](https://www.terraform.io/downloads.html) **1.6+**
+- [Go](https://go.dev/doc/install) **1.21+** (only required when building from source)
+- A Mailgun API key (`MAILGUN_API_KEY`)
 
-Clone repository to: `$GOPATH/src/github.com/wgebis/terraform-provider-mailgun`
+## Installation
 
-```sh
-$ mkdir -p $GOPATH/src/github.com/wgebis; cd $GOPATH/src/github.com/wgebis
-$ git clone git@github.com:wgebis/terraform-provider-mailgun
-```
-
-Enter the provider directory and build the provider
+Until the provider is published on the Terraform Registry, build it locally and point Terraform to the resulting binary.
 
 ```sh
-$ cd $GOPATH/src/github.com/wgebis/terraform-provider-mailgun
-$ make build
+git clone https://github.com/murad-heydarov/terraform-mailgun-provider.git
+cd terraform-mailgun-provider
+make build
 ```
 
-Using the provider
-----------------------
+Terraform will place the compiled plugin inside `~/.terraform.d/plugins` (see `GNUmakefile` for the exact target path). Within your configuration:
 
-https://registry.terraform.io/providers/wgebis/mailgun/latest/docs
+```hcl
+terraform {
+  required_providers {
+    mailgun = {
+      source  = "murad-heydarov/mailgun"
+      version = "0.1.0"
+    }
+  }
+}
 
-Developing the Provider
-----------------------
+provider "mailgun" {
+  api_key = var.mailgun_api_key
+}
+```
 
-If you wish to work on the provider, you'll first need [Go](http://www.golang.org) installed on your machine (version 1.8+ is *required*). You'll also need to correctly setup a [GOPATH](http://golang.org/doc/code.html#GOPATH), as well as adding `$GOPATH/bin` to your `$PATH`.
-
-To compile the provider, run `make build`. This will build the provider and put the provider binary in the `$GOPATH/bin` directory.
+## Development
 
 ```sh
-$ make build
-...
-$ $GOPATH/bin/terraform-provider-mailgun
-...
+# Run unit tests
+make test
+
+# Run acceptance tests (requires a real Mailgun account and DNS control)
+TF_ACC=1 MAILGUN_API_KEY=... make testacc
 ```
 
-In order to test the provider, you can simply run `make test`.
-
-```sh
-$ make test
-```
-
-In order to run the full suite of Acceptance tests, run `make testacc`.
-
-*Note:* Acceptance tests create real resources, and often cost money to run.
-
-```sh
-$ make testacc
-```
+Acceptance tests create real domains, DNS records and credentials—clean up any leftovers in your Mailgun organization after running them.

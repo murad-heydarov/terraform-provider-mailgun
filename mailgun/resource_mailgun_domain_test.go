@@ -50,6 +50,8 @@ func TestAccMailgunDomain_Basic(t *testing.T) {
 						"mailgun_domain.foobar", "sending_records.0.name", re),
 					resource.TestMatchResourceAttr(
 						"mailgun_domain.foobar", "sending_records_set.0.name", re),
+					resource.TestCheckResourceAttr(
+						"mailgun_domain.foobar", "use_automatic_sender_security", "true"),
 				),
 			},
 		},
@@ -177,5 +179,6 @@ resource "mailgun_domain" "foobar" {
 	open_tracking = true
 	click_tracking = true
 	web_scheme = "https"
+	use_automatic_sender_security = true
 }`
 }

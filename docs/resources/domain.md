@@ -7,7 +7,7 @@ page_title: "Mailgun: mailgun_domain"
 Provides a Mailgun App resource. This can be used to
 create and manage applications on Mailgun.
 
-After DNS records are set, domain verification should be triggered manually using [PUT /domains/\<domain\>/verify](https://documentation.mailgun.com/en/latest/api-domains.html#domains)
+After DNS records are set, pair this resource with [`mailgun_domain_verification`](./domain_verification.md) to automatically trigger Mailgun’s verification API instead of clicking the button in the UI.
 
 ## Example Usage
 
@@ -78,6 +78,7 @@ The following arguments are supported:
 * `open_tracking` - (Optional) (Enum: `yes` or `no`) The open tracking settings for the domain. Default: `no`
 * `click_tracking` - (Optional) (Enum: `yes` or `no`) The click tracking settings for the domain. Default: `no`
 * `web_scheme` - (Optional) (`http` or `https`) The tracking web scheme. Default: `http`
+* `use_automatic_sender_security` - (Optional) Enable Mailgun automatic sender security so SPF/DKIM alignment is enforced automatically.
 
 ## Attributes Reference
 
@@ -92,6 +93,7 @@ The following attributes are exported:
 * `open_tracking` - The open tracking setting.
 * `click_tracking` - The click tracking setting.
 * `web_scheme` - The tracking web scheme.
+* `use_automatic_sender_security` - Whether the domain enforces Mailgun automatic sender security.
 * `receiving_records` - A list of DNS records for receiving validation.  **Deprecated** Use `receiving_records_set` instead.
   * `priority` - The priority of the record.
   * `record_type` - The record type.

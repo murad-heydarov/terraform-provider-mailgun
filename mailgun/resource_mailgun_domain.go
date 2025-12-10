@@ -96,6 +96,13 @@ func resourceMailgunDomain() *schema.Resource {
 				Default:  "http",
 			},
 
+			"use_automatic_sender_security": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				ForceNew:    false,
+				Description: "Enable Mailgun's automatic sender security enforcement for the domain.",
+			},
+
 			"receiving_records": {
 				Type:       schema.TypeList,
 				Computed:   true,
@@ -284,6 +291,7 @@ func resourceMailgunDomainUpdate(ctx context.Context, d *schema.ResourceData, me
 	var openTracking = d.Get("open_tracking").(bool)
 	var clickTracking = d.Get("click_tracking").(bool)
 	var webScheme = d.Get("web_scheme").(string)
+	var autoSenderSecurity = d.Get("use_automatic_sender_security").(bool)
 
 	// Retrieve and update state of domain
 	_, errc = resourceMailgunDomainRetrieve(d.Id(), client, &currentData)
@@ -325,11 +333,21 @@ func resourceMailgunDomainUpdate(ctx context.Context, d *schema.ResourceData, me
 		}
 	}
 
-	if currentData.Get("web_scheme") != webScheme {
-		opts := mailgun.UpdateDomainOptions{}
-		opts.WebScheme = webScheme
-		errc = client.UpdateDomain(ctx, name, &opts)
+	updateOpts := &mailgun.UpdateDomainOptions{}
+	var needsUpdate bool
 
+	if currentData.Get("web_scheme") != webScheme {
+		updateOpts.WebScheme = webScheme
+		needsUpdate = true
+	}
+
+	if currentAuto, ok := currentData.Get("use_automatic_sender_security").(bool); !ok || currentAuto != autoSenderSecurity {
+		updateOpts.UseAutomaticSenderSecurity = &autoSenderSecurity
+		needsUpdate = true
+	}
+
+	if needsUpdate {
+		errc = client.UpdateDomain(ctx, name, updateOpts)
 		if errc != nil {
 			return diag.FromErr(errc)
 		}
@@ -354,6 +372,7 @@ func resourceMailgunDomainCreate(ctx context.Context, d *schema.ResourceData, me
 	opts.DKIMKeySize = d.Get("dkim_key_size").(int)
 	opts.ForceDKIMAuthority = d.Get("force_dkim_authority").(bool)
 	opts.WebScheme = d.Get("web_scheme").(string)
+	opts.UseAutomaticSenderSecurity = d.Get("use_automatic_sender_security").(bool)
 	var dkimSelector = d.Get("dkim_selector").(string)
 	var openTracking = d.Get("open_tracking").(bool)
 	var clickTracking = d.Get("click_tracking").(bool)
@@ -464,6 +483,7 @@ func resourceMailgunDomainRetrieve(id string, client *mailgun.Client, d *schema.
 	_ = d.Set("wildcard", resp.Domain.Wildcard)
 	_ = d.Set("spam_action", resp.Domain.SpamAction)
 	_ = d.Set("web_scheme", resp.Domain.WebScheme)
+	_ = d.Set("use_automatic_sender_security", resp.Domain.UseAutomaticSenderSecurity)
 
 	receivingRecords := make([]map[string]interface{}, len(resp.ReceivingDNSRecords))
 	for i, r := range resp.ReceivingDNSRecords {
